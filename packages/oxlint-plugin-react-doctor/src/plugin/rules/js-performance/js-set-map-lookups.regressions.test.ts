@@ -26,10 +26,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     ["copied", "includes(marker)"],
     ["current", "indexOf(marker) !== -1"],
     ["copied", "indexOf(marker) !== -1"],
-  ])(
-    "does not assume an inferred generator result is an array: %s.%s",
-    (receiver, lookup) => {
-      expectPass(`
+  ])("does not assume an inferred generator result is an array: %s.%s", (receiver, lookup) => {
+    expectPass(`
         declare function read(): Generator<never, string, unknown>;
         function* f(markers: string[], contracts: Array<{ marker: string }>) {
           const current = yield* read();
@@ -40,8 +38,7 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
           ];
         }
       `);
-    },
-  );
+  });
 
   it.each(["includes(marker)", "indexOf(marker) !== -1"])(
     "does not assume an inferred same-file string result is an array: %s",

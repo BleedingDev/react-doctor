@@ -21,6 +21,83 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
+  it.each([
+    ["current", "includes(marker)"],
+    ["copied", "includes(marker)"],
+    ["current", "indexOf(marker) !== -1"],
+    ["copied", "indexOf(marker) !== -1"],
+  ])("does not assume an inferred generator result is an array: %s.%s", (receiver, lookup) => {
+    expectPass(`
+        declare function read(): Generator<never, string, unknown>;
+        function* f(markers: string[], contracts: Array<{ marker: string }>) {
+          const current = yield* read();
+          const copied = current;
+          return [
+            markers.every((marker) => ${receiver}.${lookup}),
+            contracts.find(({ marker }) => !(${receiver}.${lookup})),
+          ];
+        }
+      `);
+  });
+
+  it.each(["includes(marker)", "indexOf(marker) !== -1"])(
+    "does not assume an inferred same-file string result is an array: %s",
+    (lookup) => {
+      expectPass(`
+        function read() { return "generated content"; }
+        function f(markers: string[]) {
+          const current = read();
+          return markers.every((marker) => current.${lookup});
+        }
+      `);
+    },
+  );
+
+  it.each(["includes(marker)", "indexOf(marker) !== -1"])(
+    "does not assume a string type alias is an array: %s",
+    (lookup) => {
+      expectPass(`
+        type Body = string;
+        function f(markers: string[], current: Body) {
+          return markers.every((marker) => current.${lookup});
+        }
+      `);
+    },
+  );
+
+  it.each(["includes(marker)", "indexOf(marker) !== -1"])(
+    "does not assume an untyped membership receiver is an array: %s",
+    (lookup) => {
+      expectPass(`
+        function f(markers: string[], collection) {
+          return markers.every((marker) => collection.${lookup});
+        }
+      `);
+    },
+  );
+
+  it.each(["includes(candidate)", "indexOf(candidate) !== -1"])(
+    "flags repeated lookups on a stable array through a same-file binding: %s",
+    (lookup) => {
+      expectFail(`
+        const allowedValues = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+        const allowed = allowedValues;
+        function f(candidates: string[]) {
+          return candidates.filter((candidate) => allowed.${lookup});
+        }
+      `);
+    },
+  );
+
+  it("does not flag repeated lookups on a hoisted Set", () => {
+    expectPass(`
+      function f(candidates: string[], allowedValues: readonly string[]) {
+        const allowed = new Set(allowedValues);
+        return candidates.filter((candidate) => allowed.has(candidate));
+      }
+    `);
+  });
+
   it("does not flag `.includes()` against a small inline literal array", () => {
     expectPass(
       `function f(users){ const a=[]; for(const u of users){ if(["admin","owner"].includes(u.role)) a.push(u);} return a; }`,
@@ -87,17 +164,51 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("flags untyped `.indexOf()` membership in a loop", () => {
-    expectFail(
+  it("does not assume untyped `.indexOf()` membership is an array lookup", () => {
+    expectPass(
       `function f(users, roles){ const out=[]; for(const u of users){ if(roles.indexOf(u.role) !== -1) out.push(u); } return out; }`,
     );
   });
 
-  it("does not crash on a self-referential for-of head", () => {
-    expectFail(
-      `function f(allowed) { for (const item of item) { if (allowed.indexOf(item) !== -1) return true; } }`,
-    );
+  it.each(["", ": string[]"])(
+    "does not crash on a self-referential for-of head: allowed%s",
+    (arrayAnnotation) => {
+      const expectResult = arrayAnnotation ? expectFail : expectPass;
+      expectResult(
+        `function f(allowed${arrayAnnotation}) { for (const item of item) { if (allowed.indexOf(item) !== -1) return true; } }`,
+      );
+    },
+  );
+
+  it.each(["!== -1", "=== -1", ">= 0", "< 0"])(
+    "flags proven array `.indexOf()` membership comparisons: %s",
+    (comparison) => {
+      expectFail(`
+        function f(markers: string[], allowed: readonly string[]) {
+          return markers.every((marker) => allowed.indexOf(marker) ${comparison});
+        }
+      `);
+    },
+  );
+
+  it("does not flag a proven array `.indexOf() === 0` position check", () => {
+    expectPass(`
+      function f(markers: string[], allowed: readonly string[]) {
+        return markers.every((marker) => allowed.indexOf(marker) === 0);
+      }
+    `);
   });
+
+  it.each(["0", "undefined", "1", "-1"])(
+    "keeps two-argument `.indexOf()` outside its supported contract: %s",
+    (fromIndex) => {
+      expectPass(`
+        function f(markers: string[], allowed: string[]) {
+          return markers.every((marker) => allowed.indexOf(marker, ${fromIndex}) !== -1);
+        }
+      `);
+    },
+  );
 
   it.each([
     "0",
@@ -268,12 +379,23 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     `);
   });
 
-  it("flags `.indexOf()` through an imported non-numeric element domain", () => {
-    expectFail(`
+  it("does not infer a native array from a local function return annotation", () => {
+    expectPass(`
       import type { ComparisonOperator } from "./types";
       function getAllowedOperators(): ComparisonOperator[] { return []; }
       function f(properties: unknown[], operator: ComparisonOperator) {
         return properties.filter(() => getAllowedOperators().indexOf(operator) !== -1);
+      }
+    `);
+  });
+
+  it("flags a proven array binding with an imported non-numeric element domain", () => {
+    expectFail(`
+      import type { ComparisonOperator } from "./types";
+      function getAllowedOperators(): ComparisonOperator[] { return []; }
+      function f(properties: unknown[], operator: ComparisonOperator) {
+        const allowed: ComparisonOperator[] = getAllowedOperators();
+        return properties.filter(() => allowed.indexOf(operator) !== -1);
       }
     `);
   });
@@ -846,8 +968,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("flags String(x).includes() when String is a shadowed local collection factory", () => {
-    expectFail(
+  it("does not assume a shadowed local String factory returns a native array", () => {
+    expectPass(
       `function test() {
         const String = (value: unknown) => [value];
         const hasCode = (messages: unknown[], code: string) =>
@@ -857,8 +979,8 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("flags String(x).includes() when String is a function parameter", () => {
-    expectFail(
+  it("does not assume a shadowed String parameter returns a native array", () => {
+    expectPass(
       `const hasCode = (String, messages: unknown[], code: string) =>
         messages.some((entry) => String(entry).includes(code))`,
     );

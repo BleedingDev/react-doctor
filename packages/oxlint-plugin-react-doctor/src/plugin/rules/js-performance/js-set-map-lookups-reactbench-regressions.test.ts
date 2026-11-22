@@ -33,9 +33,12 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
     `);
   });
 
-  it("reports a transpiled rest helper when any omission list is larger than the cutoff", () => {
-    expectDiagnostic(`
-      var __rest = (this && this.__rest) || function (source, excluded) {
+  it.each(["", ": string[]"])(
+    "requires array evidence for a rest helper with a large omission list: excluded%s",
+    (arrayAnnotation) => {
+      const expectResult = arrayAnnotation ? expectDiagnostic : expectNoDiagnostics;
+      expectResult(`
+      var __rest = (this && this.__rest) || function (source, excluded${arrayAnnotation}) {
         var target = {};
         for (var property in source) {
           if (Object.prototype.hasOwnProperty.call(source, property) && excluded.indexOf(property) < 0) {
@@ -45,8 +48,9 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
         return target;
       };
       const rest = __rest(props, ["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
-    `);
-  });
+      `);
+    },
+  );
 
   it("stays silent for an empty transpiled rest omission list", () => {
     expectNoDiagnostics(`
@@ -63,9 +67,12 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
     `);
   });
 
-  it("reports a transpiled rest helper with an unproven omission list", () => {
-    expectDiagnostic(`
-      var __rest = (this && this.__rest) || function (source, excluded) {
+  it.each(["", ": string[]"])(
+    "requires array evidence for a rest helper with an unresolved omission list: excluded%s",
+    (arrayAnnotation) => {
+      const expectResult = arrayAnnotation ? expectDiagnostic : expectNoDiagnostics;
+      expectResult(`
+      var __rest = (this && this.__rest) || function (source, excluded${arrayAnnotation}) {
         var target = {};
         for (var property in source) {
           if (Object.prototype.hasOwnProperty.call(source, property) && excluded.indexOf(property) < 0) {
@@ -75,8 +82,9 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
         return target;
       };
       const rest = __rest(props, excludedKeys);
-    `);
-  });
+      `);
+    },
+  );
 
   it("stays silent when an array transform rebuilds the receiver in every iteration", () => {
     expectNoDiagnostics(`
@@ -137,8 +145,8 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
     `);
   });
 
-  it("reports an unproven userland transform method that can return a cached large array", () => {
-    expectDiagnostic(`
+  it("stays silent for an unproven userland transform, even when it can return a cached array", () => {
+    expectNoDiagnostics(`
       const cachedValues = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
       const cache = { filter: () => cachedValues };
       const matchingRows = rows.filter((row) => cache.filter().includes(row.value));
@@ -185,14 +193,14 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
     "hastClassName(row)",
     "parseFilterTokens(row)",
     "sectionTitle",
-  ])("reports an unproven receiver named like a string or fresh array: %s", (receiver) => {
-    expectDiagnostic(`
+  ])("stays silent for an unproven receiver regardless of its name: %s", (receiver) => {
+    expectNoDiagnostics(`
       const matchingRows = rows.filter((row) => ${receiver}.includes(row.value));
     `);
   });
 
   it.each(["conflicts", "categories", "excludeKeys"])(
-    "reports an unproven stable array named %s",
+    "reports a proven stable array named %s",
     (arrayName) => {
       expectDiagnostic(`
         function findMatches(rows: string[], ${arrayName}: string[]) {

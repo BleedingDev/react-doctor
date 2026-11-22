@@ -1,0 +1,64 @@
+name: Proven array membership validation
+
+on:
+  push:
+    branches: [ci/proven-array-membership-validation]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proven-array-membership-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: ${{ github.repository == 'BleedingDev/react-doctor' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+
+      - name: Install frozen workspace dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build the rule package
+        run: pnpm --filter oxlint-plugin-react-doctor run build
+
+      - name: Run both changed suites with native vite-plus
+        run: |
+          pnpm --filter oxlint-plugin-react-doctor run test \
+            src/plugin/rules/js-performance/js-set-map-lookups.regressions.test.ts \
+            src/plugin/rules/js-performance/js-set-map-lookups-reactbench-regressions.test.ts
+
+      - name: Typecheck the rule package
+        run: pnpm --filter oxlint-plugin-react-doctor run typecheck
+
+      - name: Lint changed TypeScript files
+        run: |
+          pnpm run lint \
+            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.ts \
+            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.regressions.test.ts \
+            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups-reactbench-regressions.test.ts \
+            packages/fuzz/corpus/regressions/js-set-map-lookups--inferred-string-membership.ts
+
+      - name: Check formatting of changed files
+        run: |
+          pnpm run format:check \
+            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.ts \
+            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.regressions.test.ts \
+            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups-reactbench-regressions.test.ts \
+            packages/fuzz/corpus/regressions/js-set-map-lookups--inferred-string-membership.ts \
+            .changeset/proven-array-membership-lookups.md \
+            .github/workflows/proven-array-membership-validation.yml

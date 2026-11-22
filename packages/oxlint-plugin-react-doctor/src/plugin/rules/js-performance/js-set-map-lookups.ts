@@ -1739,9 +1739,8 @@ export const jsSetMapLookups = defineRule({
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
       const receiver = stripParenExpression(rawReceiver);
-      const isKnownNativeArray = isKnownNativeArrayReceiver(receiver);
       if (isKnownUserlandMembershipReceiver(receiver, methodName)) return;
-      if (methodName === "includes" && node.arguments.length === 2 && !isKnownNativeArray) return;
+      if (!isKnownNativeArrayReceiver(receiver)) return;
       const query = node.arguments[0] as EsTreeNode | undefined;
       if (
         methodName === "indexOf" &&

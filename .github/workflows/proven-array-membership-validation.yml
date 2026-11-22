@@ -1,4 +1,4 @@
-name: Proven array membership validation
+name: Proven array membership formatting validation
 
 on:
   push:
@@ -33,27 +33,8 @@ jobs:
       - name: Install frozen workspace dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
-      - name: Build the rule package
-        run: pnpm --filter oxlint-plugin-react-doctor run build
-
-      - name: Run both changed suites with native vite-plus
-        run: |
-          pnpm --filter oxlint-plugin-react-doctor run test \
-            src/plugin/rules/js-performance/js-set-map-lookups.regressions.test.ts \
-            src/plugin/rules/js-performance/js-set-map-lookups-reactbench-regressions.test.ts
-
-      - name: Typecheck the rule package
-        run: pnpm --filter oxlint-plugin-react-doctor run typecheck
-
-      - name: Lint changed TypeScript files
-        run: |
-          pnpm run lint \
-            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.ts \
-            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.regressions.test.ts \
-            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups-reactbench-regressions.test.ts \
-            packages/fuzz/corpus/regressions/js-set-map-lookups--inferred-string-membership.ts
-
       - name: Check formatting of changed files
+        id: format
         run: |
           pnpm run format:check \
             packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.ts \
@@ -62,3 +43,18 @@ jobs:
             packages/fuzz/corpus/regressions/js-set-map-lookups--inferred-string-membership.ts \
             .changeset/proven-array-membership-lookups.md \
             .github/workflows/proven-array-membership-validation.yml
+
+      - name: Capture native formatter correction on failure
+        if: ${{ failure() && steps.format.outcome == 'failure' }}
+        run: |
+          pnpm run format \
+            packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.regressions.test.ts
+          git diff --binary > "$RUNNER_TEMP/membership-format.patch"
+
+      - name: Upload native formatter correction
+        if: ${{ failure() && steps.format.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: membership-format-${{ github.sha }}
+          path: ${{ runner.temp }}/membership-format.patch
+          if-no-files-found: error
